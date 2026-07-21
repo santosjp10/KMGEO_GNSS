@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1B5E20">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GeoArea GNSS</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+:root {
+  --primary: #1B5E20; --primary-light: #2E7D32; --primary-dark: #0D3310;
+  --accent: #FF9800; --accent-light: #FFB74D; --danger: #D32F2F; --danger-light: #EF5350;
+  --info: #1976D2; --info-light: #42A5F5; --success: #388E3C; --warning: #F57C00;
+  --bg: #F5F5F5; --surface: #FFFFFF; --text-primary: #212121; --text-secondary: #757575;
+  --text-muted: #9E9E9E; --border: #E0E0E0;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.12); --shadow-md: 0 4px 12px rgba(0,0,0,0.15); --shadow-lg: 0 8px 24px rgba(0,0,0,0.18);
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 24px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-top: env(safe-area-inset-top, 0px);
+  --header-h: 56px; --bottom-nav-h: 64px; --fab-size: 56px; --status-bar-h: 28px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; font-family:'Segoe UI',Roboto,-apple-system,BlinkMacSystemFont,sans-serif; background:var(--bg); color:var(--text-primary); overflow:hidden; touch-action:manipulation; -webkit-font-smoothing:antialiased; }
+.status-bar { position:fixed; top:0; left:0; right:0; height:var(--status-bar-h); background:var(--primary-dark); z-index:10000; display:flex; align-items:center; justify-content:space-between; padding:0 16px; font-size:11px; color:rgba(255,255,255,0.8); }
+.app-header { position:fixed; top:var(--status-bar-h); left:0; right:0; height:var(--header-h); background:var(--primary); z-index:9999; display:flex; align-items:center; padding:0 12px; box-shadow:var(--shadow-sm); }
+.app-header .logo { display:flex; align-items:center; gap:8px; color:white; font-weight:700; font-size:18px; }
+.app-header .logo i { font-size:22px; color:var(--accent-light); }
+.app-header .header-actions { margin-left:auto; display:flex; gap:4px; }
+.app-header .header-btn { width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.1); border:none; color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background 0.2s; }
+.app-header .header-btn:active { background:rgba(255,255,255,0.25); }
+.gnss-pill { position:fixed; top:calc(var(--status-bar-h) + var(--header-h) + 8px); left:50%; transform:translateX(-50%); z-index:9998; background:var(--surface); border-radius:var(--radius-xl); padding:6px 14px; box-shadow:var(--shadow-md); display:flex; align-items:center; gap:10px; font-size:12px; font-weight:600; white-space:nowrap; transition:all 0.3s ease; }
+.gnss-pill .fix-dot { width:10px; height:10px; border-radius:50%; background:var(--text-muted); flex-shrink:0; }
+.gnss-pill.fix-none .fix-dot { background:var(--text-muted); }
+.gnss-pill.fix-gps .fix-dot { background:var(--info); animation:pulse-dot 2s infinite; }
+.gnss-pill.fix-dgps .fix-dot { background:var(--info-light); animation:pulse-dot 1.5s infinite; }
+.gnss-pill.fix-float .fix-dot { background:var(--warning); animation:pulse-dot 1s infinite; }
+.gnss-pill.fix-fixed .fix-dot { background:var(--success); box-shadow:0 0 8px var(--success); }
+@keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+#map { position:fixed; top:calc(var(--status-bar-h) + var(--header-h)); left:0; right:0; bottom:calc(var(--bottom-nav-h) + var(--safe-bottom)); z-index:1; }
+.leaflet-control-zoom { display:none !important; }
+.leaflet-control-attribution { font-size:9px !important; opacity:0.7; }
+.map-controls { position:fixed; right:12px; bottom:calc(var(--bottom-nav-h) + var(--safe-bottom) + 12px); z-index:1000; display:flex; flex-direction:column; gap:8px; }
+.map-control-btn { width:44px; height:44px; border-radius:var(--radius-md); background:var(--surface); border:none; box-shadow:var(--shadow-md); color:var(--text-primary); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; transition:all 0.2s; }
+.map-control-btn:active { transform:scale(0.92); background:var(--bg); }
+.map-control-btn.active { background:var(--primary); color:white; }
+.layer-switcher { position:fixed; right:12px; top:calc(var(--status-bar-h) + var(--header-h) + 52px); z-index:1000; display:flex; flex-direction:column; gap:6px; background:var(--surface); border-radius:var(--radius-md); padding:8px; box-shadow:var(--shadow-md); transform:translateX(120%); transition:transform 0.3s cubic-bezier(0.4,0,0.2,1); }
+.layer-switcher.open { transform:translateX(0); }
+.layer-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-weight:500; transition:background 0.2s; min-width:160px; }
+.layer-item:hover,.layer-item.active { background:rgba(27,94,32,0.08); color:var(--primary); }
+.layer-item i { width:20px; text-align:center; }
+.bottom-nav { position:fixed; bottom:0; left:0; right:0; height:calc(var(--bottom-nav-h) + var(--safe-bottom)); background:var(--surface); z-index:9999; display:flex; justify-content:space-around; align-items:flex-start; padding-top:6px; padding-bottom:var(--safe-bottom); box-shadow:0 -2px 10px rgba(0,0,0,0.08); }
+.nav-item { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:4px 0; cursor:pointer; border:none; background:none; color:var(--text-muted); font-size:11px; font-weight:500; transition:color 0.2s; position:relative; }
+.nav-item i { font-size:22px; transition:transform 0.2s; }
+.nav-item.active { color:var(--primary); }
+.nav-item.active i { transform:translateY(-2px); }
+.nav-item .nav-badge { position:absolute; top:2px; right:calc(50% - 16px); background:var(--danger); color:white; font-size:9px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+.fab-container { position:fixed; bottom:calc(var(--bottom-nav-h) + var(--safe-bottom) + 12px); left:50%; transform:translateX(-50%); z-index:1001; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.fab-main { width:var(--fab-size); height:var(--fab-size); border-radius:50%; background:var(--primary); border:none; color:white; font-size:24px; box-shadow:var(--shadow-lg); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.3s cubic-bezier(0.4,0,0.2,1); }
+.fab-main:active { transform:translateX(-50%) scale(0.92); }
+.fab-main.recording { background:var(--danger); animation:fab-pulse 1.5s infinite; }
+@keyframes fab-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(211,47,47,0.4);} 50%{box-shadow:0 0 0 12px rgba(211,47,47,0);} }
+.fab-actions { display:flex; gap:12px; opacity:0; transform:translateY(20px) scale(0.8); pointer-events:none; transition:all 0.3s cubic-bezier(0.4,0,0.2,1); }
+.fab-actions.open { opacity:1; transform:translateY(0) scale(1); pointer-events:all; }
+.fab-action { width:48px; height:48px; border-radius:50%; background:var(--surface); border:2px solid var(--border); color:var(--text-primary); font-size:18px; box-shadow:var(--shadow-md); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.fab-action:active { transform:scale(0.9); }
+.fab-action.active { background:var(--primary); color:white; border-color:var(--primary); }
+.panel { position:fixed; top:calc(var(--status-bar-h) + var(--header-h)); left:0; right:0; bottom:calc(var(--bottom-nav-h) + var(--safe-bottom)); background:var(--bg); z-index:500; transform:translateY(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1); display:flex; flex-direction:column; overflow:hidden; }
+.panel.open { transform:translateY(0); }
+.panel-header { display:flex; align-items:center; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); gap:12px; }
+.panel-header h2 { font-size:18px; font-weight:700; color:var(--text-primary); flex:1; }
+.panel-header .panel-close { width:36px; height:36px; border-radius:50%; border:none; background:var(--bg); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; }
+.panel-body { flex:1; overflow-y:auto; padding:16px; -webkit-overflow-scrolling:touch; }
+.card { background:var(--surface); border-radius:var(--radius-md); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.card-title { font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.card-title i { color:var(--primary); }
+.data-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.data-item { background:var(--bg); border-radius:var(--radius-sm); padding:10px 12px; }
+.data-item .label { font-size:10px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+.data-item .value { font-size:16px; font-weight:700; color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.data-item .value.small { font-size:13px; }
+.data-item .unit { font-size:11px; font-weight:500; color:var(--text-secondary); margin-left:2px; }
+.data-item.highlight { background:rgba(27,94,32,0.06); }
+.data-item.highlight .value { color:var(--primary); }
+.form-group { margin-bottom:16px; }
+.form-group label { display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
+.form-group input,.form-group select,.form-group textarea { width:100%; padding:12px 14px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:15px; font-family:inherit; background:var(--surface); color:var(--text-primary); transition:border-color 0.2s,box-shadow 0.2s; -webkit-appearance:none; }
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(27,94,32,0.1); }
+.form-group textarea { min-height:80px; resize:vertical; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:12px 20px; border-radius:var(--radius-sm); font-size:14px; font-weight:600; border:none; cursor:pointer; transition:all 0.2s; font-family:inherit; }
+.btn-primary { background:var(--primary); color:white; }
+.btn-primary:active { background:var(--primary-dark); }
+.btn-secondary { background:var(--bg); color:var(--text-primary); border:1.5px solid var(--border); }
+.btn-secondary:active { background:var(--border); }
+.btn-danger { background:var(--danger); color:white; }
+.btn-danger:active { background:#B71C1C; }
+.btn-accent { background:var(--accent); color:white; }
+.btn-accent:active { background:var(--warning); }
+.btn-block { width:100%; }
+.btn-sm { padding:8px 14px; font-size:13px; }
+.list-item { display:flex; align-items:center; padding:14px 16px; background:var(--surface); border-radius:var(--radius-sm); margin-bottom:8px; box-shadow:var(--shadow-sm); cursor:pointer; transition:all 0.2s; gap:12px; }
+.list-item:active { transform:scale(0.98); background:var(--bg); }
+.list-item .list-icon { width:44px; height:44px; border-radius:var(--radius-sm); background:rgba(27,94,32,0.08); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.list-item .list-content { flex:1; min-width:0; }
+.list-item .list-title { font-size:15px; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.list-item .list-subtitle { font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.list-item .list-meta { font-size:11px; color:var(--text-muted); text-align:right; flex-shrink:0; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:20000; display:flex; align-items:flex-end; justify-content:center; opacity:0; pointer-events:none; transition:opacity 0.3s; }
+.modal-overlay.open { opacity:1; pointer-events:all; }
+.modal-sheet { background:var(--surface); border-radius:var(--radius-lg) var(--radius-lg) 0 0; width:100%; max-width:480px; max-height:85vh; transform:translateY(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1); display:flex; flex-direction:column; overflow:hidden; }
+.modal-overlay.open .modal-sheet { transform:translateY(0); }
+.modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+.modal-header h3 { font-size:18px; font-weight:700; flex:1; }
+.modal-body { padding:16px 20px; overflow-y:auto; flex:1; }
+.modal-footer { padding:12px 20px 20px; display:flex; gap:10px; border-top:1px solid var(--border); }
+.toast-container { position:fixed; top:calc(var(--status-bar-h) + var(--header-h) + 8px); left:50%; transform:translateX(-50%); z-index:30000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.toast { background:var(--surface); color:var(--text-primary); padding:12px 20px; border-radius:var(--radius-md); box-shadow:var(--shadow-lg); font-size:14px; font-weight:500; display:flex; align-items:center; gap:10px; animation:toast-in 0.3s ease,toast-out 0.3s ease 2.7s forwards; max-width:90vw; pointer-events:all; }
+.toast.success { border-left:4px solid var(--success); }
+.toast.error { border-left:4px solid var(--danger); }
+.toast.info { border-left:4px solid var(--info); }
+.toast.warning { border-left:4px solid var(--warning); }
+@keyframes toast-in { from{opacity:0;transform:translateY(-20px) scale(0.9);} to{opacity:1;transform:translateY(0) scale(1);} }
+@keyframes toast-out { from{opacity:1;transform:translateY(0);} to{opacity:0;transform:translateY(-20px);} }
+.segmented { display:flex; background:var(--bg); border-radius:var(--radius-sm); padding:3px; gap:3px; }
+.segmented button { flex:1; padding:8px 12px; border:none; background:none; border-radius:6px; font-size:13px; font-weight:600; color:var(--text-secondary); cursor:pointer; transition:all 0.2s; font-family:inherit; }
+.segmented button.active { background:var(--surface); color:var(--primary); box-shadow:var(--shadow-sm); }
+.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:48px 24px; text-align:center; color:var(--text-muted); }
+.empty-state i { font-size:48px; margin-bottom:16px; opacity:0.4; }
+.empty-state h3 { font-size:16px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; }
+.empty-state p { font-size:13px; }
+.project-badge { position:fixed; top:calc(var(--status-bar-h) + var(--header-h) + 8px); left:12px; z-index:9998; background:var(--surface); border-radius:var(--radius-xl); padding:6px 14px; box-shadow:var(--shadow-md); font-size:12px; font-weight:600; color:var(--primary); display:flex; align-items:center; gap:6px; max-width:45vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.recording-indicator { position:fixed; top:calc(var(--status-bar-h) + var(--header-h) + 44px); left:50%; transform:translateX(-50%); z-index:9998; background:var(--danger); color:white; padding:6px 16px; border-radius:var(--radius-xl); font-size:12px; font-weight:700; display:flex; align-items:center; gap:8px; animation:recording-pulse 1s infinite; }
+@keyframes recording-pulse { 0%,100%{opacity:1;} 50%{opacity:0.7;} }
+.satellite-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(60px,1fr)); gap:8px; }
+.sat-item { background:var(--bg); border-radius:var(--radius-sm); padding:10px 6px; text-align:center; }
+.sat-item .sat-prn { font-size:16px; font-weight:700; color:var(--primary); }
+.sat-item .sat-snr { font-size:11px; color:var(--text-secondary); margin-top:2px; }
+.sat-item .sat-elev { font-size:10px; color:var(--text-muted); }
+.attr-table { width:100%; border-collapse:collapse; }
+.attr-table th,.attr-table td { padding:10px 12px; text-align:left; font-size:13px; }
+.attr-table th { font-weight:600; color:var(--text-secondary); border-bottom:1px solid var(--border); }
+.attr-table td { border-bottom:1px solid var(--border); color:var(--text-primary); }
+.attr-table tr:last-child td { border-bottom:none; }
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.text-center { text-align:center; }
+.mt-8 { margin-top:8px; }
+.mt-12 { margin-top:12px; }
+.mb-8 { margin-bottom:8px; }
+.mb-12 { margin-bottom:12px; }
+.flex { display:flex; }
+.flex-col { flex-direction:column; }
+.gap-8 { gap:8px; }
+.gap-12 { gap:12px; }
+.justify-between { justify-content:space-between; }
+.items-center { align-items:center; }
+.w-full { width:100%; }
+.about-logo { width:80px; height:80px; background:var(--primary); border-radius:var(--radius-lg); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; color:white; font-size:36px; }
+.about-version { text-align:center; font-size:13px; color:var(--text-muted); margin-bottom:24px; }
+.about-section { margin-bottom:20px; }
+.about-section h4 { font-size:14px; font-weight:700; color:var(--primary); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.about-section p { font-size:13px; color:var(--text-secondary); line-height:1.6; }
+.about-credits { background:rgba(27,94,32,0.04); border-radius:var(--radius-md); padding:16px; margin-top:16px; }
+.about-credits p { font-size:12px; color:var(--text-secondary); line-height:1.7; }
+.about-credits strong { color:var(--primary); }
+@media (min-width:768px) { .data-grid { grid-template-columns:repeat(3,1fr); } .panel { max-width:480px; left:50%; transform:translateX(-50%) translateY(100%); } .panel.open { transform:translateX(-50%) translateY(0); } }
+#splash { position:fixed; inset:0; background:var(--primary); z-index:50000; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; transition:opacity 0.5s,visibility 0.5s; }
+#splash.hidden { opacity:0; visibility:hidden; }
+#splash .splash-icon { font-size:64px; margin-bottom:16px; animation:splash-bounce 1s ease infinite alternate; }
+@keyframes splash-bounce { from{transform:translateY(0);} to{transform:translateY(-12px);} }
+#splash h1 { font-size:28px; font-weight:800; letter-spacing:1px; }
+#splash p { font-size:14px; opacity:0.8; margin-top:8px; }
+#splash .splash-loader { width:40px; height:40px; border:3px solid rgba(255,255,255,0.2); border-top-color:white; border-radius:50%; animation:spin 0.8s linear infinite; margin-top:24px; }
+@keyframes spin { to{transform:rotate(360deg);} }
+</style>
+</head>
+<body>
+<div id="splash"><div class="splash-icon"><i class="fas fa-globe-americas"></i></div><h1>GeoArea GNSS</h1><p>Coleta de Dados Geoespaciais</p><div class="splash-loader"></div></div>
+<div class="status-bar"><span id="status-time">--:--</span><span id="status-battery"><i class="fas fa-battery-full"></i></span></div>
+<header class="app-header"><div class="logo"><i class="fas fa-globe-americas"></i><span>GeoArea</span></div><div class="header-actions"><button class="header-btn" id="btn-gnss-detail"><i class="fas fa-satellite-dish"></i></button><button class="header-btn" id="btn-settings"><i class="fas fa-cog"></i></button></div></header>
+<div class="gnss-pill fix-none" id="gnss-pill"><div class="fix-dot"></div><span id="gnss-fix-text">Sem Sinal</span><span style="color:var(--text-muted)">|</span><span id="gnss-hdop">HDOP: --</span><span style="color:var(--text-muted)">|</span><span id="gnss-sats"><i class="fas fa-satellite"></i> 0</span></div>
+<div class="project-badge" id="project-badge" style="display:none"><i class="fas fa-folder-open"></i><span id="project-badge-name">Sem projeto</span></div>
+<div class="recording-indicator" id="recording-indicator" style="display:none"><i class="fas fa-circle" style="font-size:8px"></i><span id="recording-text">Gravando linha...</span></div>
+<div id="map"></div>
+<div class="map-controls"><button class="map-control-btn" id="btn-layers"><i class="fas fa-layer-group"></i></button><button class="map-control-btn" id="btn-locate"><i class="fas fa-crosshairs"></i></button><button class="map-control-btn" id="btn-zoom-in"><i class="fas fa-plus"></i></button><button class="map-control-btn" id="btn-zoom-out"><i class="fas fa-minus"></i></button></div>
+<div class="layer-switcher" id="layer-switcher"><div class="layer-item active" data-layer="satellite"><i class="fas fa-satellite"></i> Satelite</div><div class="layer-item" data-layer="hybrid"><i class="fas fa-map"></i> Hibrido</div><div class="layer-item" data-layer="streets"><i class="fas fa-road"></i> Ruas</div><div class="layer-item" data-layer="topo"><i class="fas fa-mountain"></i> Topografico</div><div class="layer-item" data-layer="osm"><i class="fas fa-globe"></i> OpenStreetMap</div></div>
+<div class="fab-container"><div class="fab-actions" id="fab-actions"><button class="fab-action" data-mode="point"><i class="fas fa-map-marker-alt"></i><span class="fab-label">Ponto</span></button><button class="fab-action" data-mode="line"><i class="fas fa-route"></i><span class="fab-label">Linha</span></button><button class="fab-action" data-mode="polygon"><i class="fas fa-draw-polygon"></i><span class="fab-label">Poligono</span></button></div><button class="fab-main" id="fab-main"><i class="fas fa-plus"></i></button></div>
+<nav class="bottom-nav"><button class="nav-item active" data-panel="map" data-screen="map"><i class="fas fa-map"></i><span>Mapa</span></button><button class="nav-item" data-panel="data" data-screen="data"><i class="fas fa-database"></i><span>Dados</span><span class="nav-badge" id="data-badge" style="display:none">0</span></button><button class="nav-item" data-panel="projects" data-screen="projects"><i class="fas fa-folder"></i><span>Projetos</span></button><button class="nav-item" data-panel="tools" data-screen="tools"><i class="fas fa-tools"></i><span>Ferramentas</span></button><button class="nav-item" data-panel="about" data-screen="about"><i class="fas fa-info-circle"></i><span>Sobre</span></button></nav>
+<div class="panel" id="panel-data"><div class="panel-header"><h2><i class="fas fa-database"></i> Dados Coletados</h2><button class="panel-close" data-close="data"><i class="fas fa-times"></i></button></div><div class="panel-body"><div class="segmented mb-12" id="data-filter"><button class="active" data-filter="all">Todos</button><button data-filter="point">Pontos</button><button data-filter="line">Linhas</button><button data-filter="polygon">Poligonos</button></div><div id="data-list"></div></div></div>
+<div class="panel" id="panel-projects"><div class="panel-header"><h2><i class="fas fa-folder"></i> Projetos</h2><button class="panel-close" data-close="projects"><i class="fas fa-times"></i></button></div><div class="panel-body"><button class="btn btn-primary btn-block mb-12" id="btn-new-project"><i class="fas fa-plus"></i> Novo Projeto</button><div id="projects-list"></div></div></div>
+<div class="panel" id="panel-tools"><div class="panel-header"><h2><i class="fas fa-tools"></i> Ferramentas</h2><button class="panel-close" data-close="tools"><i class="fas fa-times"></i></button></div><div class="panel-body"><div class="list-item" id="tool-utm"><div class="list-icon"><i class="fas fa-exchange-alt"></i></div><div class="list-content"><div class="list-title">Conversor UTM</div><div class="list-subtitle">Converter coordenadas Geograficas para UTM</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div><div class="list-item" id="tool-distance"><div class="list-icon"><i class="fas fa-ruler"></i></div><div class="list-content"><div class="list-title">Distancia e Azimute</div><div class="list-subtitle">Calcular entre dois pontos no mapa</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div><div class="list-item" id="tool-area"><div class="list-icon"><i class="fas fa-vector-square"></i></div><div class="list-content"><div class="list-title">Area no Mapa</div><div class="list-subtitle">Medir area desenhando no mapa</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div><div class="list-item" id="tool-import"><div class="list-icon"><i class="fas fa-file-import"></i></div><div class="list-content"><div class="list-title">Importar Dados</div><div class="list-subtitle">GeoJSON, KML, KMZ, GPX, CSV, DXF, Shapefile, GeoPackage</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div><div class="list-item" id="tool-export"><div class="list-icon"><i class="fas fa-file-export"></i></div><div class="list-content"><div class="list-title">Exportar Dados</div><div class="list-subtitle">Exportar para multiplos formatos geoespaciais</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div><div class="list-item" id="tool-gnss-connect"><div class="list-icon"><i class="fas fa-satellite-dish"></i></div><div class="list-content"><div class="list-title">Conexao GNSS Externo</div><div class="list-subtitle">USB, Bluetooth, Wi-Fi, NMEA</div></div><i class="fas fa-chevron-right" style="color:var(--text-muted)"></i></div></div></div>
+<div class="panel" id="panel-about"><div class="panel-header"><h2><i class="fas fa-info-circle"></i> Sobre</h2><button class="panel-close" data-close="about"><i class="fas fa-times"></i></button></div><div class="panel-body"><div class="about-logo"><i class="fas fa-globe-americas"></i></div><h3 style="text-align:center;font-size:20px;margin-bottom:4px">GeoArea GNSS</h3><div class="about-version">Versao 2.0.0 - Julho 2026</div><div class="about-section"><h4><i class="fas fa-bullseye"></i> Objetivo</h4><p>Aplicativo de coleta de dados geoespaciais com receptores GNSS, desenvolvido para profissionais e estudantes das areas de Topografia, Geodesia, Geoprocessamento, Agricultura de Precisao, Agronomia, Engenharia Florestal, Inventario Florestal, Meio Ambiente, Sensoriamento Remoto e Sistemas de Informacoes Geograficas (SIG).</p></div><div class="about-section"><h4><i class="fas fa-star"></i> Funcionalidades</h4><p>Coleta de pontos, linhas e poligonos com calculos automaticos de distancias, perimetros, areas e azimutes. Suporte a multiplos mapas base, gerenciamento de projetos, importacao e exportacao nos principais formatos geoespaciais, operacao offline completa e conexao com receptores GNSS externos via USB, Bluetooth, Wi-Fi e protocolo NMEA.</p></div><div class="about-section"><h4><i class="fas fa-shield-alt"></i> Privacidade</h4><p>Todos os dados sao armazenados localmente no dispositivo. Nenhuma informacao e enviada para servidores externos. O aplicativo funciona completamente offline.</p></div><div class="about-credits"><p><strong>Creditos:</strong></p><p>• <strong>Prof. Dr. Jacinto Pereira Santos</strong> - Iniciativa e orientacao do projeto</p><p>• <strong>AI KIMI</strong> - Contribuicao essencial no desenvolvimento do projeto</p><p>• <strong>Leaflet.js</strong> - Biblioteca de mapas interativos</p><p>• <strong>OpenStreetMap</strong> - Dados cartograficos abertos</p><p>• <strong>Font Awesome</strong> - Icones utilizados na interface</p></div><div class="about-section mt-12"><h4><i class="fas fa-university"></i> Instituicao</h4><p>Universidade Federal do Tocantins (UFT) - Campus de Gurupi</p><p style="margin-top:4px;font-size:11px;color:var(--text-muted)">Curso de Engenharia Florestal / Programa de Pos-Graduacao</p></div><div style="text-align:center;margin-top:24px;padding:16px;font-size:11px;color:var(--text-muted)">&copy; 2026 GeoArea GNSS - Todos os direitos reservados.<br>Desenvolvido com dedicacao para a comunidade academica e profissional.</div></div></div>
+<div class="modal-overlay" id="modal-feature"><div class="modal-sheet"><div class="modal-header"><h3 id="modal-feature-title">Novo Ponto</h3><button class="panel-close" id="modal-feature-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="card"><div class="card-title"><i class="fas fa-map-marker-alt"></i> Coordenadas</div><div class="data-grid"><div class="data-item"><div class="label">Latitude</div><div class="value small" id="feat-lat">--</div></div><div class="data-item"><div class="label">Longitude</div><div class="value small" id="feat-lon">--</div></div><div class="data-item"><div class="label">UTM X</div><div class="value small" id="feat-utm-x">--</div></div><div class="data-item"><div class="label">UTM Y</div><div class="value small" id="feat-utm-y">--</div></div><div class="data-item"><div class="label">Altitude</div><div class="value small" id="feat-alt">-- <span class="unit">m</span></div></div><div class="data-item"><div class="label">Precisao H</div><div class="value small" id="feat-hdop">-- <span class="unit">m</span></div></div></div></div><div class="form-group mt-12"><label>Nome / Identificacao</label><input type="text" id="feat-name" placeholder="Ex: Ponto de Controle 01"></div><div class="form-group"><label>Descricao / Observacoes</label><textarea id="feat-desc" placeholder="Descreva o ponto coletado..."></textarea></div><div id="feat-extra-fields"></div></div><div class="modal-footer"><button class="btn btn-secondary" id="btn-feat-cancel">Cancelar</button><button class="btn btn-primary" id="btn-feat-save"><i class="fas fa-save"></i> Salvar</button></div></div></div>
+<div class="modal-overlay" id="modal-project"><div class="modal-sheet"><div class="modal-header"><h3>Novo Projeto</h3><button class="panel-close" id="modal-project-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="form-group"><label>Nome do Projeto *</label><input type="text" id="proj-name" placeholder="Ex: Levantamento Fazenda Santa Maria"></div><div class="form-group"><label>Descricao</label><textarea id="proj-desc" placeholder="Descreva o objetivo do projeto..."></textarea></div><div class="form-group"><label>Responsavel</label><input type="text" id="proj-resp" placeholder="Nome do responsavel tecnico"></div><div class="form-group"><label>Datum / Sistema de Coordenadas</label><select id="proj-datum"><option value="SIRGAS2000">SIRGAS 2000 (EPSG:4674)</option><option value="WGS84">WGS 84 (EPSG:4326)</option><option value="SAD69">SAD 69 (EPSG:4618)</option><option value="CorregoAlegre">Corrego Alegre (EPSG:4225)</option></select></div><div class="form-group"><label>Fuso UTM</label><select id="proj-zone"><option value="18">18S (72W - 66W)</option><option value="19">19S (66W - 60W)</option><option value="20">20S (60W - 54W)</option><option value="21">21S (54W - 48W)</option><option value="22">22S (48W - 42W)</option><option value="23">23S (42W - 36W)</option><option value="24">24S (36W - 30W)</option><option value="25">25S (30W - 24W)</option></select></div></div><div class="modal-footer"><button class="btn btn-secondary" id="btn-proj-cancel">Cancelar</button><button class="btn btn-primary" id="btn-proj-save"><i class="fas fa-save"></i> Criar Projeto</button></div></div></div>
+<div class="modal-overlay" id="modal-gnss"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-satellite-dish"></i> Status GNSS Detalhado</h3><button class="panel-close" id="modal-gnss-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="card"><div class="card-title"><i class="fas fa-signal"></i> Posicionamento</div><div class="data-grid"><div class="data-item highlight"><div class="label">Tipo de Fix</div><div class="value" id="gnss-detail-fix">--</div></div><div class="data-item"><div class="label">Latitude</div><div class="value small" id="gnss-detail-lat">--</div></div><div class="data-item"><div class="label">Longitude</div><div class="value small" id="gnss-detail-lon">--</div></div><div class="data-item"><div class="label">Altitude</div><div class="value small" id="gnss-detail-alt">-- <span class="unit">m</span></div></div><div class="data-item"><div class="label">Precisao H (HDOP)</div><div class="value small" id="gnss-detail-hdop">--</div></div><div class="data-item"><div class="label">Precisao V (VDOP)</div><div class="value small" id="gnss-detail-vdop">--</div></div><div class="data-item"><div class="label">Velocidade</div><div class="value small" id="gnss-detail-speed">-- <span class="unit">km/h</span></div></div><div class="data-item"><div class="label">Direcao</div><div class="value small" id="gnss-detail-track">-- <span class="unit">deg</span></div></div></div></div><div class="card mt-12"><div class="card-title"><i class="fas fa-satellite"></i> Satelites (<span id="gnss-sat-count">0</span>)</div><div class="satellite-list" id="satellite-list"></div></div><div class="card mt-12"><div class="card-title"><i class="fas fa-clock"></i> Tempo</div><div class="data-grid"><div class="data-item"><div class="label">Hora UTC</div><div class="value small" id="gnss-detail-time">--</div></div><div class="data-item"><div class="label">Data</div><div class="value small" id="gnss-detail-date">--</div></div></div></div></div></div></div>
+<div class="modal-overlay" id="modal-utm"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-exchange-alt"></i> Conversor UTM</h3><button class="panel-close" id="modal-utm-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="segmented mb-12"><button class="active" id="utm-dir-geo-to-utm">Geo para UTM</button><button id="utm-dir-utm-to-geo">UTM para Geo</button></div><div id="utm-geo-section"><div class="form-group"><label>Latitude (graus decimais)</label><input type="number" id="utm-in-lat" step="0.0000001" placeholder="-15.1234567"></div><div class="form-group"><label>Longitude (graus decimais)</label><input type="number" id="utm-in-lon" step="0.0000001" placeholder="-48.1234567"></div><div class="form-group"><label>Fuso UTM (opcional, auto-detectado)</label><input type="number" id="utm-in-zone" placeholder="Ex: 22"></div></div><div id="utm-utm-section" style="display:none"><div class="form-group"><label>Coordenada Este (X)</label><input type="number" id="utm-in-x" step="0.001" placeholder="Ex: 789123.456"></div><div class="form-group"><label>Coordenada Norte (Y)</label><input type="number" id="utm-in-y" step="0.001" placeholder="Ex: 8321456.789"></div><div class="form-group"><label>Fuso UTM</label><input type="number" id="utm-in-zone2" placeholder="Ex: 22"></div><div class="form-group"><label>Hemisferio</label><select id="utm-in-hemi"><option value="S">Sul</option><option value="N">Norte</option></select></div></div><button class="btn btn-primary btn-block mt-12" id="btn-utm-convert"><i class="fas fa-calculator"></i> Converter</button><div class="card mt-12" id="utm-result" style="display:none"><div class="card-title"><i class="fas fa-check-circle"></i> Resultado</div><div id="utm-result-content"></div></div></div></div></div>
+<div class="modal-overlay" id="modal-export"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-file-export"></i> Exportar Dados</h3><button class="panel-close" id="modal-export-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="form-group"><label>Formato de Exportacao</label><select id="export-format"><option value="geojson">GeoJSON (.geojson)</option><option value="kml">KML (.kml)</option><option value="gpx">GPX (.gpx)</option><option value="csv">CSV (.csv)</option></select></div><div class="form-group"><label>Projeto</label><select id="export-project"></select></div><div class="form-group"><label>Tipo de Geometria</label><select id="export-type"><option value="all">Todos</option><option value="point">Pontos</option><option value="line">Linhas</option><option value="polygon">Poligonos</option></select></div><button class="btn btn-primary btn-block mt-12" id="btn-export-execute"><i class="fas fa-download"></i> Exportar</button></div></div></div>
+<div class="modal-overlay" id="modal-import"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-file-import"></i> Importar Dados</h3><button class="panel-close" id="modal-import-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="form-group"><label>Selecionar Arquivo</label><input type="file" id="import-file" accept=".geojson,.json,.kml,.kmz,.gpx,.csv,.dxf,.shp,.gpkg"></div><div class="form-group"><label>Projeto de Destino</label><select id="import-project"></select></div><div class="card mt-12" style="background:rgba(25,118,210,0.06)"><div style="font-size:12px;color:var(--text-secondary);line-height:1.6"><strong>Formatos suportados:</strong><br>GeoJSON, KML, KMZ, GPX, CSV, DXF, Shapefile, GeoPackage<br><br><strong>Nota:</strong> Para Shapefile, selecione o arquivo .shp. Para GeoPackage, selecione o arquivo .gpkg.</div></div><button class="btn btn-primary btn-block mt-12" id="btn-import-execute"><i class="fas fa-upload"></i> Importar</button></div></div></div>
+<div class="modal-overlay" id="modal-gnss-connect"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-satellite-dish"></i> Conexao GNSS Externo</h3><button class="panel-close" id="modal-gnss-connect-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="segmented mb-12"><button class="active" id="conn-tab-bt">Bluetooth</button><button id="conn-tab-usb">USB</button><button id="conn-tab-wifi">Wi-Fi</button><button id="conn-tab-nmea">NMEA</button></div><div id="conn-bt-section"><div class="card" style="background:rgba(25,118,210,0.04)"><p style="font-size:13px;color:var(--text-secondary);line-height:1.6"><i class="fas fa-info-circle" style="color:var(--info)"></i> Ative o Bluetooth do dispositivo e pareie com o receptor GNSS antes de conectar.</p></div><button class="btn btn-secondary btn-block mt-12" id="btn-scan-bt"><i class="fas fa-search"></i> Escanear Dispositivos</button><div id="bt-devices-list" class="mt-12"></div></div><div id="conn-usb-section" style="display:none"><div class="card" style="background:rgba(25,118,210,0.04)"><p style="font-size:13px;color:var(--text-secondary);line-height:1.6"><i class="fas fa-info-circle" style="color:var(--info)"></i> Conecte o receptor GNSS via cabo USB OTG. O aplicativo detectara automaticamente a porta serial.</p></div><button class="btn btn-secondary btn-block mt-12" id="btn-scan-usb"><i class="fas fa-usb"></i> Detectar Porta USB</button><div id="usb-ports-list" class="mt-12"></div></div><div id="conn-wifi-section" style="display:none"><div class="form-group"><label>Endereco IP do Receptor</label><input type="text" id="wifi-ip" placeholder="Ex: 192.168.1.100"></div><div class="form-group"><label>Porta TCP</label><input type="number" id="wifi-port" placeholder="Ex: 8080" value="8080"></div><button class="btn btn-primary btn-block mt-12" id="btn-connect-wifi"><i class="fas fa-wifi"></i> Conectar</button></div><div id="conn-nmea-section" style="display:none"><div class="card" style="background:rgba(25,118,210,0.04)"><p style="font-size:13px;color:var(--text-secondary);line-height:1.6"><i class="fas fa-info-circle" style="color:var(--info)"></i> Cole as sentencas NMEA recebidas do receptor para analise e processamento.</p></div><div class="form-group mt-12"><label>Sentencas NMEA (uma por linha)</label><textarea id="nmea-input" rows="6" placeholder="$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"></textarea></div><button class="btn btn-primary btn-block mt-12" id="btn-parse-nmea"><i class="fas fa-code"></i> Processar NMEA</button></div><div class="card mt-12" id="conn-status-card" style="display:none"><div class="card-title"><i class="fas fa-plug"></i> Status da Conexao</div><div id="conn-status-content"></div></div></div></div></div>
+<div class="modal-overlay" id="modal-settings"><div class="modal-sheet"><div class="modal-header"><h3><i class="fas fa-cog"></i> Configuracoes</h3><button class="panel-close" id="modal-settings-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="card"><div class="card-title"><i class="fas fa-globe"></i> Sistema de Coordenadas</div><div class="form-group"><label>Datum Padrao</label><select id="setting-datum"><option value="SIRGAS2000">SIRGAS 2000</option><option value="WGS84">WGS 84</option><option value="SAD69">SAD 69</option></select></div><div class="form-group"><label>Fuso UTM Padrao</label><select id="setting-zone"><option value="18">18S</option><option value="19">19S</option><option value="20">20S</option><option value="21">21S</option><option value="22" selected>22S</option><option value="23">23S</option><option value="24">24S</option><option value="25">25S</option></select></div></div><div class="card mt-12"><div class="card-title"><i class="fas fa-satellite-dish"></i> GNSS</div><div class="form-group"><label>Intervalo de Coleta (segundos)</label><input type="number" id="setting-interval" value="1" min="0.5" max="60" step="0.5"></div><div class="form-group"><label>Precisao Minima Aceitavel (metros)</label><input type="number" id="setting-accuracy" value="5" min="0.1" max="100" step="0.1"></div><div class="form-group"><label><input type="checkbox" id="setting-sound" checked> Som de confirmacao</label></div><div class="form-group"><label><input type="checkbox" id="setting-vibrate" checked> Vibracao ao coletar</label></div></div><div class="card mt-12"><div class="card-title"><i class="fas fa-map"></i> Mapa</div><div class="form-group"><label>Mapa Base Padrao</label><select id="setting-basemap"><option value="satellite">Satelite</option><option value="hybrid">Hibrido</option><option value="streets">Ruas</option><option value="topo">Topografico</option><option value="osm">OpenStreetMap</option></select></div><div class="form-group"><label><input type="checkbox" id="setting-follow" checked> Seguir posicao automaticamente</label></div></div><div class="card mt-12"><div class="card-title"><i class="fas fa-database"></i> Dados</div><button class="btn btn-danger btn-block" id="btn-clear-all"><i class="fas fa-trash"></i> Limpar Todos os Dados</button><p style="font-size:11px;color:var(--text-muted);margin-top:8px;text-align:center">Esta acao nao pode ser desfeita. Todos os projetos e dados coletados serao removidos.</p></div></div><div class="modal-footer"><button class="btn btn-primary btn-block" id="btn-settings-save"><i class="fas fa-save"></i> Salvar Configuracoes</button></div></div></div>
+<div class="toast-container" id="toast-container"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+const GeoArea = (function() {
+  'use strict';
+
+  const state = {
+    map: null, layers: {}, currentLayer: 'satellite', position: null, watchId: null,
+    gnssState: { fix:'none', lat:null, lon:null, alt:null, hdop:null, vdop:null, speed:null, track:null, sats:0, satsActive:[], time:null, date:null, accuracy:null, quality:0 },
+    projects: [], currentProject: null, features: [],
+    recording: { active:false, mode:null, points:[], layer:null, markers:[] },
+    settings: { datum:'SIRGAS2000', zone:'22', interval:1, minAccuracy:5, sound:true, vibrate:true, basemap:'satellite', follow:true },
+    tempFeature: null, distanceTool: { active:false, points:[], markers:[], line:null },
+    areaTool: { active:false, points:[], markers:[], polygon:null }
+  };
+
+  const UTM = {
+    a: 6378137.0, f: 1/298.257223563, k0: 0.9996,
+    geoToUtm(lat, lon, zone) {
+      if (!zone) zone = Math.floor((lon + 180) / 6) + 1;
+      const latR = lat * Math.PI / 180, lonR = lon * Math.PI / 180;
+      const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+      const e2 = 2 * UTM.f - UTM.f * UTM.f;
+      const e2p = e2 / (1 - e2);
+      const N = UTM.a / Math.sqrt(1 - e2 * Math.sin(latR) * Math.sin(latR));
+      const T = Math.tan(latR) * Math.tan(latR);
+      const C = e2p * Math.cos(latR) * Math.cos(latR);
+      const A = Math.cos(latR) * (lonR - lon0);
+      const M = UTM.a * ((1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256) * latR - (3*e2/8 + 3*e2*e2/32 + 45*e2*e2*e2/1024) * Math.sin(2*latR) + (15*e2*e2/256 + 45*e2*e2*e2/1024) * Math.sin(4*latR) - (35*e2*e2*e2/3072) * Math.sin(6*latR));
+      const x = UTM.k0 * N * (A + (1-T+C) * A*A*A/6 + (5-18*T+T*T+72*C-58*e2p) * A*A*A*A*A/120) + 500000;
+      let y = UTM.k0 * (M + N * Math.tan(latR) * (A*A/2 + (5-T+9*C+4*C*C) * A*A*A*A/24 + (61-58*T+T*T+600*C-330*e2p) * A*A*A*A*A*A/720));
+      if (lat < 0) y += 10000000;
+      return { x: x.toFixed(3), y: y.toFixed(3), zone: zone, hemisphere: lat >= 0 ? 'N' : 'S' };
+    },
+    utmToGeo(x, y, zone, hemisphere) {
+      const e2 = 2 * UTM.f - UTM.f * UTM.f;
+      const e2p = e2 / (1 - e2);
+      const M = y / UTM.k0;
+      const mu = M / (UTM.a * (1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256));
+      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+      const J1 = (3*e1/2 - 27*e1*e1*e1/32);
+      const J2 = (21*e1*e1/16 - 55*e1*e1*e1*e1/32);
+      const J3 = (151*e1*e1*e1/96);
+      const J4 = (1097*e1*e1*e1*e1/512);
+      const fp = mu + J1*Math.sin(2*mu) + J2*Math.sin(4*mu) + J3*Math.sin(6*mu) + J4*Math.sin(8*mu);
+      const e2sin2 = e2 * Math.sin(fp) * Math.sin(fp);
+      const C1 = e2p * Math.cos(fp) * Math.cos(fp);
+      const T1 = Math.tan(fp) * Math.tan(fp);
+      const N1 = UTM.a / Math.sqrt(1 - e2sin2);
+      const R1 = UTM.a * (1 - e2) / Math.pow(1 - e2sin2, 1.5);
+      const D = (x - 500000) / (N1 * UTM.k0);
+      const lat = fp - (N1*Math.tan(fp)/R1) * (D*D/2 - (5+3*T1+10*C1-4*C1*C1-9*e2p)*D*D*D*D/24 + (61+90*T1+298*C1+45*T1*T1-252*e2p-3*C1*C1)*D*D*D*D*D*D/720);
+      const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+      const lon = lon0 + (D - (1+2*T1+C1)*D*D*D/6 + (5-2*C1+28*T1-3*C1*C1+8*e2p+24*T1*T1)*D*D*D*D*D/120) / Math.cos(fp);
+      return { lat: lat * 180 / Math.PI, lon: lon * 180 / Math.PI };
+    }
+  };
+
+  const GeoCalc = {
+    haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    },
+    azimuth(lat1, lon1, lat2, lon2) {
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const lat1r = lat1 * Math.PI / 180, lat2r = lat2 * Math.PI / 180;
+      const y = Math.sin(dLon) * Math.cos(lat2r);
+      const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLon);
+      let az = Math.atan2(y, x) * 180 / Math.PI;
+      if (az < 0) az += 360;
+      return az;
+    },
+    polygonAreaHaversine(coords) {
+      let area = 0; const R = 6371000;
+      for (let i = 0; i < coords.length; i++) {
+        const j = (i + 1) % coords.length;
+        const lat1 = coords[i][1] * Math.PI / 180, lat2 = coords[j][1] * Math.PI / 180;
+        const dLon = (coords[j][0] - coords[i][0]) * Math.PI / 180;
+        area += dLon * (2 + Math.sin(lat1) + Math.sin(lat2));
+      }
+      return Math.abs(area * R * R / 2);
+    },
+    totalDistance(coords) {
+      let dist = 0;
+      for (let i = 1; i < coords.length; i++) dist += GeoCalc.haversine(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]);
+      return dist;
+    },
+    formatDist(m) { return m < 1000 ? m.toFixed(2) + ' m' : (m/1000).toFixed(3) + ' km'; },
+    formatArea(m2) { return m2 < 10000 ? m2.toFixed(2) + ' m2' : (m2/10000).toFixed(4) + ' ha'; }
+  };
+
+  const NMEAParser = {
+    parse(sentence) {
+      if (!sentence || !sentence.startsWith('$')) return null;
+      const parts = sentence.split(',');
+      const type = parts[0].substring(1);
+      const result = { type: type, valid: true };
+      if (type === 'GPGGA' || type === 'GNGGA') {
+        result.time = parts[1] ? parts[1].substring(0,2) + ':' + parts[1].substring(2,4) + ':' + parts[1].substring(4,6) : null;
+        result.lat = this.parseLat(parts[2], parts[3]);
+        result.lon = this.parseLon(parts[4], parts[5]);
+        result.quality = parseInt(parts[6]) || 0;
+        result.sats = parseInt(parts[7]) || 0;
+        result.hdop = parseFloat(parts[8]) || null;
+        result.alt = parseFloat(parts[9]) || null;
+      } else if (type === 'GPRMC' || type === 'GNRMC') {
+        result.time = parts[1] ? parts[1].substring(0,2) + ':' + parts[1].substring(2,4) + ':' + parts[1].substring(4,6) : null;
+        result.status = parts[2];
+        result.lat = this.parseLat(parts[3], parts[4]);
+        result.lon = this.parseLon(parts[5], parts[6]);
+        result.speed = parts[7] ? (parseFloat(parts[7]) * 1.852).toFixed(2) : null;
+        result.track = parseFloat(parts[8]) || null;
+        result.date = parts[9] ? parts[9].substring(0,2) + '/' + parts[9].substring(2,4) + '/20' + parts[9].substring(4,6) : null;
+      } else if (type === 'GPGSA' || type === 'GNGSA') {
+        result.mode = parts[2];
+        result.fix = parts[2] === '1' ? 'none' : parts[2] === '2' ? '2D' : '3D';
+        result.pdop = parseFloat(parts[15]) || null;
+        result.hdop = parseFloat(parts[16]) || null;
+        result.vdop = parseFloat(parts[17] ? parts[17].split('*')[0] : null) || null;
+      }
+      return result;
+    },
+    parseLat(val, dir) {
+      if (!val || !dir) return null;
+      const deg = parseInt(val.substring(0, 2));
+      const min = parseFloat(val.substring(2));
+      let lat = deg + min / 60;
+      if (dir === 'S') lat = -lat;
+      return lat;
+    },
+    parseLon(val, dir) {
+      if (!val || !dir) return null;
+      const deg = parseInt(val.substring(0, 3));
+      const min = parseFloat(val.substring(3));
+      let lon = deg + min / 60;
+      if (dir === 'W') lon = -lon;
+      return lon;
+    }
+  };
+
+  const Storage = {
+    save(key, data) { try { localStorage.setItem('geoarea_' + key, JSON.stringify(data)); } catch(e) { console.warn('Storage error:', e); } },
+    load(key, def) { try { const d = localStorage.getItem('geoarea_' + key); return d ? JSON.parse(d) : def; } catch(e) { return def; } },
+    remove(key) { localStorage.removeItem('geoarea_' + key); }
+  };
+
+  const UI = {
+    toast(message, type) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', info:'fa-info-circle', warning:'fa-exclamation-triangle' };
+      toast.innerHTML = '<i class="fas ' + icons[type] + '" style="color:var(--' + (type==='success'?'success':type==='error'?'danger':type==='warning'?'warning':'info') + ')"></i>' + message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    },
+    formatDD(val) { return val === null || val === undefined ? '--' : val.toFixed(7); },
+    getFixLabel(q) { const labels = {0:'Sem Sinal',1:'GPS',2:'DGPS',4:'RTK Fix',5:'RTK Float',6:'Estimado'}; return labels[q] || 'Desconhecido'; },
+    getFixClass(q) { const classes = {0:'fix-none',1:'fix-gps',2:'fix-dgps',4:'fix-fixed',5:'fix-float'}; return classes[q] || 'fix-none'; }
+  };
+
+  let posMarker = null, posCircle = null;
+
+  function initMap() {
+    state.map = L.map('map', { zoomControl:false, attributionControl:true, tap:false, touchZoom:true, bounceAtZoomLimits:false }).setView([-15.0, -48.0], 5);
+    state.layers.satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom:22, attribution:'Google Satellite' });
+    state.layers.hybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom:22, attribution:'Google Hybrid' });
+    state.layers.streets = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom:22, attribution:'Google Maps' });
+    state.layers.topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom:17, attribution:'OpenTopoMap' });
+    state.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'OpenStreetMap' });
+    state.layers.satellite.addTo(state.map);
+  }
+
+  function startGPS() {
+    if (!navigator.geolocation) { UI.toast('Geolocalizacao nao suportada', 'error'); return; }
+    state.watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, { enableHighAccuracy:true, maximumAge:0, timeout:10000 });
+  }
+
+  function onPosition(pos) {
+    const { latitude, longitude, altitude, accuracy, heading, speed } = pos.coords;
+    state.position = { lat:latitude, lon:longitude, alt:altitude, accuracy, heading, speed, timestamp:pos.timestamp };
+    state.gnssState.lat = latitude; state.gnssState.lon = longitude; state.gnssState.alt = altitude;
+    state.gnssState.accuracy = accuracy; state.gnssState.hdop = accuracy ? (accuracy/5).toFixed(1) : null;
+    state.gnssState.speed = speed ? (speed*3.6).toFixed(1) : null; state.gnssState.track = heading;
+    state.gnssState.time = new Date().toISOString().split('T')[1].substring(0,8);
+    state.gnssState.date = new Date().toLocaleDateString('pt-BR');
+    if (accuracy <= 0.02) state.gnssState.quality = 4;
+    else if (accuracy <= 0.5) state.gnssState.quality = 5;
+    else if (accuracy <= 2) state.gnssState.quality = 2;
+    else if (accuracy <= 20) state.gnssState.quality = 1;
+    else state.gnssState.quality = 0;
+    updateGNSSDisplay(); updatePositionMarker();
+    if (state.recording.active && state.recording.mode) addRecordingPoint(latitude, longitude);
+  }
+
+  function onPositionError(err) { UI.toast('Erro no GPS: ' + (err.message || 'Sinal indisponivel'), 'warning'); }
+
+  function updateGNSSDisplay() {
+    const g = state.gnssState;
+    const pill = document.getElementById('gnss-pill');
+    pill.className = 'gnss-pill ' + UI.getFixClass(g.quality);
+    document.getElementById('gnss-fix-text').textContent = UI.getFixLabel(g.quality);
+    document.getElementById('gnss-hdop').textContent = 'HDOP: ' + (g.hdop || '--');
+    document.getElementById('gnss-sats').innerHTML = '<i class="fas fa-satellite"></i> ' + (g.sats || 0);
+    if (document.getElementById('modal-gnss').classList.contains('open')) {
+      document.getElementById('gnss-detail-fix').textContent = UI.getFixLabel(g.quality);
+      document.getElementById('gnss-detail-lat').textContent = UI.formatDD(g.lat);
+      document.getElementById('gnss-detail-lon').textContent = UI.formatDD(g.lon);
+      document.getElementById('gnss-detail-alt').innerHTML = (g.alt !== null ? g.alt.toFixed(1) : '--') + ' <span class="unit">m</span>';
+      document.getElementById('gnss-detail-hdop').textContent = g.hdop || '--';
+      document.getElementById('gnss-detail-vdop').textContent = g.vdop || '--';
+      document.getElementById('gnss-detail-speed').innerHTML = (g.speed || '--') + ' <span class="unit">km/h</span>';
+      document.getElementById('gnss-detail-track').innerHTML = (g.track !== null ? g.track.toFixed(1) : '--') + ' <span class="unit">deg</span>';
+      document.getElementById('gnss-detail-time').textContent = g.time || '--';
+      document.getElementById('gnss-detail-date').textContent = g.date || '--';
+    }
+  }
+
+  function updatePositionMarker() {
+    if (!state.position) return;
+    const { lat, lon, accuracy } = state.position;
+    if (!posMarker) {
+      posMarker = L.circleMarker([lat, lon], { radius:8, fillColor:'#1B5E20', color:'#fff', weight:2, opacity:1, fillOpacity:0.9 }).addTo(state.map);
+      posCircle = L.circle([lat, lon], { radius:accuracy || 10, color:'#1B5E20', weight:1, fillColor:'#1B5E20', fillOpacity:0.1 }).addTo(state.map);
+    } else { posMarker.setLatLng([lat, lon]); posCircle.setLatLng([lat, lon]); posCircle.setRadius(accuracy || 10); }
+    if (state.settings.follow) state.map.panTo([lat, lon]);
+  }
+
+  function startRecording(mode) {
+    if (!state.position) { UI.toast('Aguardando sinal GPS...', 'warning'); return; }
+    state.recording.active = true; state.recording.mode = mode; state.recording.points = []; state.recording.layer = null;
+    document.getElementById('fab-main').classList.add('recording');
+    document.getElementById('fab-main').innerHTML = '<i class="fas fa-stop"></i>';
+    document.getElementById('recording-indicator').style.display = 'flex';
+    document.getElementById('recording-text').textContent = mode === 'line' ? 'Gravando linha...' : 'Gravando poligono...';
+    addRecordingPoint(state.position.lat, state.position.lon);
+    UI.toast('Gravacao iniciada', 'info');
+  }
+
+  function stopRecording() {
+    if (!state.recording.active) return;
+    const pts = state.recording.points;
+    if (pts.length < 2) { UI.toast('Pontos insuficientes', 'warning'); cancelRecording(); return; }
+    state.tempFeature = { type:state.recording.mode, coordinates:pts.map(p => [p.lon, p.lat]), properties:{} };
+    const extra = document.getElementById('feat-extra-fields'); extra.innerHTML = '';
+    if (state.recording.mode === 'line') {
+      const dist = GeoCalc.totalDistance(pts.map(p => [p.lon, p.lat]));
+      extra.innerHTML = '<div class="card" style="background:rgba(27,94,32,0.04)"><div class="card-title"><i class="fas fa-ruler"></i> Medicao Automatica</div><div class="data-grid"><div class="data-item highlight"><div class="label">Distancia Total</div><div class="value">' + GeoCalc.formatDist(dist) + '</div></div><div class="data-item"><div class="label">Numero de Vertices</div><div class="value">' + pts.length + '</div></div></div></div>';
+      state.tempFeature.properties.distance = dist;
+    } else if (state.recording.mode === 'polygon') {
+      const area = GeoCalc.polygonAreaHaversine(pts.map(p => [p.lon, p.lat]));
+      const perim = GeoCalc.totalDistance([...pts.map(p => [p.lon, p.lat]), [pts[0].lon, pts[0].lat]]);
+      extra.innerHTML = '<div class="card" style="background:rgba(27,94,32,0.04)"><div class="card-title"><i class="fas fa-vector-square"></i> Medicao Automatica</div><div class="data-grid"><div class="data-item highlight"><div class="label">Area</div><div class="value">' + GeoCalc.formatArea(area) + '</div></div><div class="data-item"><div class="label">Perimetro</div><div class="value">' + GeoCalc.formatDist(perim) + '</div></div><div class="data-item"><div class="label">Numero de Vertices</div><div class="value">' + pts.length + '</div></div></div></div>';
+      state.tempFeature.properties.area = area; state.tempFeature.properties.perimeter = perim;
+    }
+    cancelRecording(); openFeatureModal(state.recording.mode);
+  }
+
+  function cancelRecording() {
+    state.recording.active = false; state.recording.mode = null; state.recording.points = [];
+    if (state.recording.layer) { state.map.removeLayer(state.recording.layer); state.recording.layer = null; }
+    if (state.recording.markers) { state.recording.markers.forEach(m => state.map.removeLayer(m)); state.recording.markers = []; }
+    document.getElementById('fab-main').classList.remove('recording');
+    document.getElementById('fab-main').innerHTML = '<i class="fas fa-plus"></i>';
+    document.getElementById('recording-indicator').style.display = 'none';
+  }
+
+  function addRecordingPoint(lat, lon) {
+    state.recording.points.push({ lat, lon });
+    const pts = state.recording.points.map(p => [p.lat, p.lon]);
+    if (state.recording.markers) state.recording.markers.forEach(m => state.map.removeLayer(m));
+    state.recording.markers = [];
+    pts.forEach(p => { const m = L.circleMarker(p, { radius:5, fillColor:'#FF9800', color:'#fff', weight:2, fillOpacity:1 }).addTo(state.map); state.recording.markers.push(m); });
+    if (state.recording.layer) state.map.removeLayer(state.recording.layer);
+    if (state.recording.mode === 'line') state.recording.layer = L.polyline(pts, { color:'#FF9800', weight:3, opacity:0.8 }).addTo(state.map);
+    else if (state.recording.mode === 'polygon') state.recording.layer = L.polygon(pts, { color:'#FF9800', weight:2, fillColor:'#FF9800', fillOpacity:0.2 }).addTo(state.map);
+  }
+
+  function collectPoint() {
+    if (!state.position) { UI.toast('Aguardando sinal GPS...', 'warning'); return; }
+    state.tempFeature = { type:'point', coordinates:[state.position.lon, state.position.lat], properties:{} };
+    openFeatureModal('point');
+  }
+
+  function openFeatureModal(type) {
+    const titles = { point:'Novo Ponto', line:'Nova Linha', polygon:'Novo Poligono' };
+    document.getElementById('modal-feature-title').textContent = titles[type] || 'Nova Feicao';
+    const pos = state.position;
+    const utm = pos ? UTM.geoToUtm(pos.lat, pos.lon, parseInt(state.settings.zone)) : null;
+    document.getElementById('feat-lat').textContent = pos ? UI.formatDD(pos.lat) : '--';
+    document.getElementById('feat-lon').textContent = pos ? UI.formatDD(pos.lon) : '--';
+    document.getElementById('feat-utm-x').textContent = utm ? utm.x : '--';
+    document.getElementById('feat-utm-y').textContent = utm ? utm.y : '--';
+    document.getElementById('feat-alt').innerHTML = (pos && pos.alt !== null ? pos.alt.toFixed(1) : '--') + ' <span class="unit">m</span>';
+    document.getElementById('feat-hdop').innerHTML = (pos && pos.accuracy ? pos.accuracy.toFixed(1) : '--') + ' <span class="unit">m</span>';
+    document.getElementById('feat-name').value = ''; document.getElementById('feat-desc').value = '';
+    document.getElementById('modal-feature').classList.add('open');
+  }
+
+  function saveFeature() {
+    if (!state.tempFeature) return;
+    const name = document.getElementById('feat-name').value.trim() || 'Sem nome';
+    const desc = document.getElementById('feat-desc').value.trim();
+    const feat = {
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2,5),
+      type: state.tempFeature.type, name: name, description: desc,
+      coordinates: state.tempFeature.coordinates,
+      properties: { ...state.tempFeature.properties, hdop: state.position?.accuracy, altitude: state.position?.alt, timestamp: new Date().toISOString() },
+      projectId: state.currentProject?.id || null, createdAt: new Date().toISOString()
+    };
+    state.features.push(feat); Storage.save('features', state.features);
+    renderFeatureOnMap(feat); updateDataBadge();
+    document.getElementById('modal-feature').classList.remove('open'); state.tempFeature = null;
+    if (state.settings.vibrate && navigator.vibrate) navigator.vibrate(100);
+    UI.toast('Feicao salva com sucesso!', 'success');
+  }
+
+  function renderFeatureOnMap(feat) {
+    let layer;
+    if (feat.type === 'point') {
+      layer = L.marker([feat.coordinates[1], feat.coordinates[0]], {
+        icon: L.divIcon({ className:'custom-marker', html:'<div style="background:#1B5E20;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>', iconSize:[14,14], iconAnchor:[7,7] })
+      }).bindPopup('<b>' + feat.name + '</b><br>' + (feat.description || ''));
+    } else if (feat.type === 'line') {
+      const coords = feat.coordinates.map(c => [c[1], c[0]]);
+      layer = L.polyline(coords, { color:'#1976D2', weight:3 }).bindPopup('<b>' + feat.name + '</b><br>Dist: ' + GeoCalc.formatDist(feat.properties.distance || 0));
+    } else if (feat.type === 'polygon') {
+      const coords = feat.coordinates.map(c => [c[1], c[0]]);
+      layer = L.polygon(coords, { color:'#388E3C', weight:2, fillColor:'#388E3C', fillOpacity:0.25 }).bindPopup('<b>' + feat.name + '</b><br>Area: ' + GeoCalc.formatArea(feat.properties.area || 0));
+    }
+    if (layer) { layer.addTo(state.map); feat._layer = layer; }
+  }
+
+  function renderAllFeatures() { state.features.forEach(f => renderFeatureOnMap(f)); }
+
+  function loadProjects() {
+    state.projects = Storage.load('projects', []);
+    state.currentProject = Storage.load('currentProject', null);
+    state.features = Storage.load('features', []);
+    if (state.currentProject) {
+      document.getElementById('project-badge').style.display = 'flex';
+      document.getElementById('project-badge-name').textContent = state.currentProject.name;
+    }
+  }
+
+  function saveProject() {
+    const name = document.getElementById('proj-name').value.trim();
+    if (!name) { UI.toast('Informe o nome do projeto', 'warning'); return; }
+    const proj = {
+      id: Date.now().toString(36), name: name,
+      description: document.getElementById('proj-desc').value.trim(),
+      responsible: document.getElementById('proj-resp').value.trim(),
+      datum: document.getElementById('proj-datum').value,
+      zone: document.getElementById('proj-zone').value,
+      createdAt: new Date().toISOString(), featureCount: 0
+    };
+    state.projects.push(proj); Storage.save('projects', state.projects);
+    document.getElementById('modal-project').classList.remove('open');
+    renderProjectsList(); UI.toast('Projeto criado com sucesso!', 'success');
+  }
+
+  function selectProject(id) {
+    const proj = state.projects.find(p => p.id === id);
+    if (!proj) return;
+    state.currentProject = proj; Storage.save('currentProject', proj);
+    document.getElementById('project-badge').style.display = 'flex';
+    document.getElementById('project-badge-name').textContent = proj.name;
+    UI.toast('Projeto ativo: ' + proj.name, 'success'); closePanel('projects');
+  }
+
+  function deleteProject(id) {
+    if (!confirm('Tem certeza que deseja excluir este projeto?')) return;
+    state.projects = state.projects.filter(p => p.id !== id);
+    if (state.currentProject && state.currentProject.id === id) {
+      state.currentProject = null; Storage.remove('currentProject');
+      document.getElementById('project-badge').style.display = 'none';
+    }
+    Storage.save('projects', state.projects); renderProjectsList(); UI.toast('Projeto excluido', 'info');
+  }
+
+  function renderProjectsList() {
+    const container = document.getElementById('projects-list');
+    if (state.projects.length === 0) {
+      container.innerHTML = '<div class="empty-state"><i class="fas fa-folder-open"></i><h3>Nenhum projeto</h3><p>Crie um novo projeto para organizar suas coletas</p></div>';
+      return;
+    }
+    container.innerHTML = state.projects.map(p => {
+      const isActive = state.currentProject && state.currentProject.id === p.id;
+      const featCount = state.features.filter(f => f.projectId === p.id).length;
+      return '<div class="list-item" style="' + (isActive ? 'border-left:3px solid var(--primary)' : '') + '"><div class="list-icon"><i class="fas fa-folder' + (isActive ? '-open' : '') + '"></i></div><div class="list-content" onclick="GeoArea.selectProject(\'' + p.id + '\')"><div class="list-title">' + p.name + '</div><div class="list-subtitle">' + (p.datum || 'SIRGAS 2000') + ' | Fuso ' + (p.zone || '--') + ' | ' + featCount + ' feicoes</div></div><div class="list-meta"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); GeoArea.deleteProject(\'' + p.id + '\')" style="padding:4px 8px;font-size:11px"><i class="fas fa-trash"></i></button></div></div>';
+    }).join('');
+  }
+
+  function renderDataList(filter) {
+    filter = filter || 'all';
+    const container = document.getElementById('data-list');
+    let feats = state.features;
+    if (state.currentProject) feats = feats.filter(f => f.projectId === state.currentProject.id);
+    if (filter !== 'all') feats = feats.filter(f => f.type === filter);
+    if (feats.length === 0) {
+      container.innerHTML = '<div class="empty-state"><i class="fas fa-database"></i><h3>Nenhum dado coletado</h3><p>Utilize o botao + para coletar pontos, linhas e poligonos</p></div>';
+      return;
+    }
+    container.innerHTML = feats.slice().reverse().map(f => {
+      const icons = { point:'fa-map-marker-alt', line:'fa-route', polygon:'fa-draw-polygon' };
+      const colors = { point:'#1B5E20', line:'#1976D2', polygon:'#388E3C' };
+      let extra = '';
+      if (f.type === 'line' && f.properties.distance) extra = '<br><span style="font-size:11px;color:var(--text-muted)">Dist: ' + GeoCalc.formatDist(f.properties.distance) + '</span>';
+      if (f.type === 'polygon' && f.properties.area) extra = '<br><span style="font-size:11px;color:var(--text-muted)">Area: ' + GeoCalc.formatArea(f.properties.area) + '</span>';
+      return '<div class="list-item"><div class="list-icon" style="background:' + colors[f.type] + '20;color:' + colors[f.type] + '"><i class="fas ' + icons[f.type] + '"></i></div><div class="list-content"><div class="list-title">' + f.name + '</div><div class="list-subtitle">' + f.type.toUpperCase() + ' | ' + new Date(f.createdAt).toLocaleString('pt-BR') + extra + '</div></div><div class="list-meta"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); GeoArea.deleteFeature(\'' + f.id + '\')" style="padding:4px 8px;font-size:11px"><i class="fas fa-trash"></i></button></div></div>';
+    }).join('');
+  }
+
+  function deleteFeature(id) {
+    if (!confirm('Excluir esta feicao?')) return;
+    const feat = state.features.find(f => f.id === id);
+    if (feat && feat._layer) state.map.removeLayer(feat._layer);
+    state.features = state.features.filter(f => f.id !== id);
+    Storage.save('features', state.features); renderDataList(); updateDataBadge(); UI.toast('Feicao excluida', 'info');
+  }
+
+  function updateDataBadge() {
+    const badge = document.getElementById('data-badge');
+    let count = state.features.length;
+    if (state.currentProject) count = state.features.filter(f => f.projectId === state.currentProject.id).length;
+    badge.textContent = count; badge.style.display = count > 0 ? 'flex' : 'none';
+  }
+
+  function exportData(format, projectId, type) {
+    let feats = state.features;
+    if (projectId && projectId !== 'all') feats = feats.filter(f => f.projectId === projectId);
+    if (type && type !== 'all') feats = feats.filter(f => f.type === type);
+    if (feats.length === 0) { UI.toast('Nenhum dado para exportar', 'warning'); return; }
+    let content, mime, ext;
+    if (format === 'geojson') {
+      const geojson = { type:'FeatureCollection', features: feats.map(f => ({
+        type:'Feature', properties:{ name:f.name, description:f.description, ...f.properties },
+        geometry:{ type:f.type==='point'?'Point':f.type==='line'?'LineString':'Polygon', coordinates:f.type==='polygon'?[f.coordinates]:f.coordinates }
+      }))};
+      content = JSON.stringify(geojson, null, 2); mime = 'application/geo+json'; ext = 'geojson';
+    } else if (format === 'csv') {
+      const rows = feats.map(f => [f.name, f.type, f.coordinates[1], f.coordinates[0], f.properties.altitude || '', f.properties.hdop || '', f.createdAt].join(','));
+      content = 'Nome,Tipo,Latitude,Longitude,Altitude,Precisao,Data\n' + rows.join('\n'); mime = 'text/csv'; ext = 'csv';
+    } else if (format === 'kml') {
+      const placemarks = feats.map(f => {
+        let coords = '';
+        if (f.type === 'point') coords = f.coordinates[0] + ',' + f.coordinates[1] + ',0';
+        else if (f.type === 'line') coords = f.coordinates.map(c => c[0] + ',' + c[1] + ',0').join(' ');
+        else coords = f.coordinates.map(c => c[0] + ',' + c[1] + ',0').join(' ');
+        return '<Placemark><name>' + f.name + '</name><description>' + (f.description || '') + '</description><Point><coordinates>' + coords + '</coordinates></Point></Placemark>';
+      }).join('');
+      content = '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>GeoArea Export</name>' + placemarks + '</Document></kml>';
+      mime = 'application/vnd.google-earth.kml+xml'; ext = 'kml';
+    } else if (format === 'gpx') {
+      const trkpts = feats.filter(f => f.type === 'point').map(f => '<wpt lat="' + f.coordinates[1] + '" lon="' + f.coordinates[0] + '"><name>' + f.name + '</name></wpt>').join('');
+      content = '<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1"><trk><name>GeoArea Export</name><trkseg>' + trkpts + '</trkseg></trk></gpx>';
+      mime = 'application/gpx+xml'; ext = 'gpx';
+    }
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = 'geoarea_export_' + new Date().toISOString().slice(0,10) + '.' + ext; a.click(); URL.revokeObjectURL(url);
+    UI.toast('Arquivo exportado com sucesso!', 'success');
+  }
+
+  function importFile(file, projectId) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const ext = file.name.split('.').pop().toLowerCase();
+        let imported = 0;
+        if (ext === 'geojson' || ext === 'json') {
+          const data = JSON.parse(text);
+          const features = data.features || (data.type === 'Feature' ? [data] : []);
+          features.forEach(f => {
+            const geom = f.geometry;
+            const type = geom.type === 'Point' ? 'point' : geom.type === 'LineString' ? 'line' : 'polygon';
+            const coords = type === 'polygon' ? geom.coordinates[0] : geom.coordinates;
+            state.features.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2,5), type: type, name: f.properties?.name || 'Importado ' + (imported+1), description: f.properties?.description || '', coordinates: coords, properties: f.properties || {}, projectId: projectId || null, createdAt: new Date().toISOString() });
+            imported++;
+          });
+        } else if (ext === 'csv') {
+          const lines = text.split('\n').slice(1);
+          lines.forEach((line, i) => {
+            if (!line.trim()) return;
+            const cols = line.split(',');
+            if (cols.length >= 4) {
+              state.features.push({ id: Date.now().toString(36) + Math.random().toString(36).substr(2,5), type: 'point', name: cols[0] || 'Ponto ' + (i+1), description: '', coordinates: [parseFloat(cols[3]), parseFloat(cols[2])], properties: { altitude: cols[4] || null }, projectId: projectId || null, createdAt: new Date().toISOString() });
+              imported++;
+            }
+          });
+        } else { UI.toast('Formato ' + ext + ' em desenvolvimento. Use GeoJSON ou CSV.', 'warning'); return; }
+        Storage.save('features', state.features); renderAllFeatures(); updateDataBadge();
+        UI.toast(imported + ' feicoes importadas com sucesso!', 'success');
+      } catch(err) { UI.toast('Erro ao importar: ' + err.message, 'error'); }
+    };
+    reader.readAsText(file);
+  }
+
+  function openPanel(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
+    document.getElementById('panel-' + name)?.classList.add('open');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelector('.nav-item[data-panel="' + name + '"]').classList.add('active');
+    if (name === 'data') renderDataList();
+    if (name === 'projects') renderProjectsList();
+  }
+
+  function closePanel(name) {
+    document.getElementById('panel-' + name)?.classList.remove('open');
+    document.querySelector('.nav-item[data-panel="map"]').classList.add('active');
+  }
+
+  function bindEvents() {
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const panel = item.dataset.panel;
+        if (panel === 'map') { document.querySelectorAll('.panel').forEach(p => p.classList.remove('open')); document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); item.classList.add('active'); }
+        else openPanel(panel);
+      });
+    });
+    document.querySelectorAll('.panel-close').forEach(btn => { btn.addEventListener('click', () => closePanel(btn.dataset.close)); });
+
+    const fabMain = document.getElementById('fab-main');
+    const fabActions = document.getElementById('fab-actions');
+    fabMain.addEventListener('click', () => {
+      if (state.recording.active) stopRecording();
+      else fabActions.classList.toggle('open');
+    });
+    document.querySelectorAll('.fab-action').forEach(btn => {
+      btn.addEventListener('click', () => { const mode = btn.dataset.mode; fabActions.classList.remove('open'); if (mode === 'point') collectPoint(); else startRecording(mode); });
+    });
+
+    document.getElementById('btn-layers').addEventListener('click', () => { document.getElementById('layer-switcher').classList.toggle('open'); });
+    document.getElementById('btn-locate').addEventListener('click', () => { if (state.position) state.map.flyTo([state.position.lat, state.position.lon], 18); else UI.toast('Aguardando posicao GPS...', 'warning'); });
+    document.getElementById('btn-zoom-in').addEventListener('click', () => state.map.zoomIn());
+    document.getElementById('btn-zoom-out').addEventListener('click', () => state.map.zoomOut());
+
+    document.querySelectorAll('.layer-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const layerName = item.dataset.layer;
+        document.querySelectorAll('.layer-item').forEach(l => l.classList.remove('active'));
+        item.classList.add('active');
+        Object.values(state.layers).forEach(l => state.map.removeLayer(l));
+        state.layers[layerName].addTo(state.map);
+        document.getElementById('layer-switcher').classList.remove('open');
+      });
+    });
+
+    document.getElementById('btn-feat-save').addEventListener('click', saveFeature);
+    document.getElementById('btn-feat-cancel').addEventListener('click', () => { document.getElementById('modal-feature').classList.remove('open'); state.tempFeature = null; });
+    document.getElementById('modal-feature-close').addEventListener('click', () => { document.getElementById('modal-feature').classList.remove('open'); state.tempFeature = null; });
+
+    document.getElementById('btn-new-project').addEventListener('click', () => { document.getElementById('modal-project').classList.add('open'); });
+    document.getElementById('btn-proj-save').addEventListener('click', saveProject);
+    document.getElementById('btn-proj-cancel').addEventListener('click', () => { document.getElementById('modal-project').classList.remove('open'); });
+    document.getElementById('modal-project-close').addEventListener('click', () => { document.getElementById('modal-project').classList.remove('open'); });
+
+    document.getElementById('btn-gnss-detail').addEventListener('click', () => { document.getElementById('modal-gnss').classList.add('open'); updateGNSSDisplay(); });
+    document.getElementById('modal-gnss-close').addEventListener('click', () => { document.getElementById('modal-gnss').classList.remove('open'); });
+
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      document.getElementById('setting-datum').value = state.settings.datum;
+      document.getElementById('setting-zone').value = state.settings.zone;
+      document.getElementById('setting-interval').value = state.settings.interval;
+      document.getElementById('setting-accuracy').value = state.settings.minAccuracy;
+      document.getElementById('setting-sound').checked = state.settings.sound;
+      document.getElementById('setting-vibrate').checked = state.settings.vibrate;
+      document.getElementById('setting-basemap').value = state.settings.basemap;
+      document.getElementById('setting-follow').checked = state.settings.follow;
+      document.getElementById('modal-settings').classList.add('open');
+    });
+    document.getElementById('modal-settings-close').addEventListener('click', () => { document.getElementById('modal-settings').classList.remove('open'); });
+    document.getElementById('btn-settings-save').addEventListener('click', () => {
+      state.settings.datum = document.getElementById('setting-datum').value;
+      state.settings.zone = document.getElementById('setting-zone').value;
+      state.settings.interval = parseFloat(document.getElementById('setting-interval').value);
+      state.settings.minAccuracy = parseFloat(document.getElementById('setting-accuracy').value);
+      state.settings.sound = document.getElementById('setting-sound').checked;
+      state.settings.vibrate = document.getElementById('setting-vibrate').checked;
+      state.settings.basemap = document.getElementById('setting-basemap').value;
+      state.settings.follow = document.getElementById('setting-follow').checked;
+      Storage.save('settings', state.settings);
+      document.getElementById('modal-settings').classList.remove('open');
+      UI.toast('Configuracoes salvas', 'success');
+    });
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+      if (!confirm('ATENCAO: Todos os dados serao permanentemente removidos. Continuar?')) return;
+      state.features = []; state.projects = []; state.currentProject = null;
+      Storage.remove('features'); Storage.remove('projects'); Storage.remove('currentProject');
+      document.getElementById('project-badge').style.display = 'none';
+      updateDataBadge(); UI.toast('Todos os dados foram removidos', 'info');
+    });
+
+    document.querySelectorAll('#data-filter button').forEach(btn => {
+      btn.addEventListener('click', () => { document.querySelectorAll('#data-filter button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderDataList(btn.dataset.filter); });
+    });
+
+    document.getElementById('tool-utm').addEventListener('click', () => { document.getElementById('modal-utm').classList.add('open'); });
+    document.getElementById('modal-utm-close').addEventListener('click', () => { document.getElementById('modal-utm').classList.remove('open'); });
+    document.getElementById('utm-dir-geo-to-utm').addEventListener('click', () => {
+      document.getElementById('utm-geo-section').style.display = 'block';
+      document.getElementById('utm-utm-section').style.display = 'none';
+      document.getElementById('utm-dir-geo-to-utm').classList.add('active');
+      document.getElementById('utm-dir-utm-to-geo').classList.remove('active');
+    });
+    document.getElementById('utm-dir-utm-to-geo').addEventListener('click', () => {
+      document.getElementById('utm-geo-section').style.display = 'none';
+      document.getElementById('utm-utm-section').style.display = 'block';
+      document.getElementById('utm-dir-geo-to-utm').classList.remove('active');
+      document.getElementById('utm-dir-utm-to-geo').classList.add('active');
+    });
+    document.getElementById('btn-utm-convert').addEventListener('click', () => {
+      const isGeoToUtm = document.getElementById('utm-dir-geo-to-utm').classList.contains('active');
+      const resultDiv = document.getElementById('utm-result');
+      const contentDiv = document.getElementById('utm-result-content');
+      if (isGeoToUtm) {
+        const lat = parseFloat(document.getElementById('utm-in-lat').value);
+        const lon = parseFloat(document.getElementById('utm-in-lon').value);
+        const zone = parseInt(document.getElementById('utm-in-zone').value) || null;
+        if (isNaN(lat) || isNaN(lon)) { UI.toast('Informe coordenadas validas', 'warning'); return; }
+        const utm = UTM.geoToUtm(lat, lon, zone);
+        contentDiv.innerHTML = '<div class="data-grid"><div class="data-item highlight"><div class="label">Este (X)</div><div class="value">' + utm.x + '</div></div><div class="data-item highlight"><div class="label">Norte (Y)</div><div class="value">' + utm.y + '</div></div><div class="data-item"><div class="label">Fuso</div><div class="value">' + utm.zone + '</div></div><div class="data-item"><div class="label">Hemisferio</div><div class="value">' + utm.hemisphere + '</div></div></div>';
+      } else {
+        const x = parseFloat(document.getElementById('utm-in-x').value);
+        const y = parseFloat(document.getElementById('utm-in-y').value);
+        const zone = parseInt(document.getElementById('utm-in-zone2').value);
+        const hemi = document.getElementById('utm-in-hemi').value;
+        if (isNaN(x) || isNaN(y) || isNaN(zone)) { UI.toast('Informe coordenadas validas', 'warning'); return; }
+        const geo = UTM.utmToGeo(x, y, zone, hemi);
+        contentDiv.innerHTML = '<div class="data-grid"><div class="data-item highlight"><div class="label">Latitude</div><div class="value small">' + geo.lat.toFixed(7) + '</div></div><div class="data-item highlight"><div class="label">Longitude</div><div class="value small">' + geo.lon.toFixed(7) + '</div></div></div>';
+      }
+      resultDiv.style.display = 'block';
+    });
+
+    document.getElementById('tool-export').addEventListener('click', () => {
+      const sel = document.getElementById('export-project');
+      sel.innerHTML = '<option value="all">Todos os projetos</option>' + state.projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+      document.getElementById('modal-export').classList.add('open');
+    });
+    document.getElementById('modal-export-close').addEventListener('click', () => { document.getElementById('modal-export').classList.remove('open'); });
+    document.getElementById('btn-export-execute').addEventListener('click', () => {
+      exportData(document.getElementById('export-format').value, document.getElementById('export-project').value, document.getElementById('export-type').value);
+      document.getElementById('modal-export').classList.remove('open');
+    });
+
+    document.getElementById('tool-import').addEventListener('click', () => {
+      const sel = document.getElementById('import-project');
+      sel.innerHTML = '<option value="">Sem projeto</option>' + state.projects.map(p => '<option value="' + p.id + '">' + p.name + '</option>').join('');
+      document.getElementById('modal-import').classList.add('open');
+    });
+    document.getElementById('modal-import-close').addEventListener('click', () => { document.getElementById('modal-import').classList.remove('open'); });
+    document.getElementById('btn-import-execute').addEventListener('click', () => {
+      const file = document.getElementById('import-file').files[0];
+      if (!file) { UI.toast('Selecione um arquivo', 'warning'); return; }
+      importFile(file, document.getElementById('import-project').value);
+      document.getElementById('modal-import').classList.remove('open');
+    });
+
+    document.getElementById('tool-gnss-connect').addEventListener('click', () => { document.getElementById('modal-gnss-connect').classList.add('open'); });
+    document.getElementById('modal-gnss-connect-close').addEventListener('click', () => { document.getElementById('modal-gnss-connect').classList.remove('open'); });
+    ['bt','usb','wifi','nmea'].forEach(tab => {
+      document.getElementById('conn-tab-' + tab).addEventListener('click', () => {
+        ['bt','usb','wifi','nmea'].forEach(t => { document.getElementById('conn-' + t + '-section').style.display = 'none'; document.getElementById('conn-tab-' + t).classList.remove('active'); });
+        document.getElementById('conn-' + tab + '-section').style.display = 'block';
+        document.getElementById('conn-tab-' + tab).classList.add('active');
+      });
+    });
+    document.getElementById('btn-scan-bt').addEventListener('click', async () => {
+      try { const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true }); UI.toast('Dispositivo: ' + device.name, 'success'); }
+      catch(e) { UI.toast('Erro Bluetooth: ' + e.message, 'error'); }
+    });
+    document.getElementById('btn-scan-usb').addEventListener('click', () => { UI.toast('Deteccao USB requer permissao. Use NMEA manual.', 'info'); });
+    document.getElementById('btn-connect-wifi').addEventListener('click', () => { UI.toast('Conexao Wi-Fi em desenvolvimento', 'info'); });
+    document.getElementById('btn-parse-nmea').addEventListener('click', () => {
+      const input = document.getElementById('nmea-input').value.trim();
+      if (!input) { UI.toast('Cole sentencas NMEA', 'warning'); return; }
+      const lines = input.split('\n'); let parsed = 0;
+      lines.forEach(line => {
+        const data = NMEAParser.parse(line.trim());
+        if (data && data.lat && data.lon) {
+          state.gnssState.lat = data.lat; state.gnssState.lon = data.lon; state.gnssState.alt = data.alt;
+          state.gnssState.hdop = data.hdop; state.gnssState.sats = data.sats; state.gnssState.quality = data.quality;
+          state.gnssState.time = data.time; state.gnssState.date = data.date;
+          if (data.speed) state.gnssState.speed = data.speed;
+          if (data.track) state.gnssState.track = data.track;
+          parsed++;
+        }
+      });
+      updateGNSSDisplay(); UI.toast(parsed + ' sentencas NMEA processadas', 'success');
+    });
+
+    document.getElementById('tool-distance').addEventListener('click', () => {
+      UI.toast('Toque no mapa para marcar pontos de distancia', 'info');
+      state.distanceTool.active = true; state.map.once('click', onMapClickDistance);
+    });
+    document.getElementById('tool-area').addEventListener('click', () => {
+      UI.toast('Toque no mapa para marcar vertices', 'info');
+      state.areaTool.active = true; state.map.on('click', onMapClickArea);
+    });
+  }
+
+  function onMapClickDistance(e) {
+    const { lat, lng } = e.latlng;
+    state.distanceTool.points.push([lng, lat]);
+    const marker = L.marker([lat, lng], { icon: L.divIcon({ className:'dist-marker', html:'<div style="background:#1976D2;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3)"></div>', iconSize:[12,12], iconAnchor:[6,6] }) }).addTo(state.map);
+    state.distanceTool.markers.push(marker);
+    if (state.distanceTool.points.length >= 2) {
+      const pts = state.distanceTool.points;
+      const dist = GeoCalc.haversine(pts[pts.length-2][1], pts[pts.length-2][0], pts[pts.length-1][1], pts[pts.length-1][0]);
+      const az = GeoCalc.azimuth(pts[pts.length-2][1], pts[pts.length-2][0], pts[pts.length-1][1], pts[pts.length-1][0]);
+      marker.bindPopup('<b>Distancia:</b> ' + GeoCalc.formatDist(dist) + '<br><b>Azimute:</b> ' + az.toFixed(2) + ' deg').openPopup();
+      if (state.distanceTool.line) state.map.removeLayer(state.distanceTool.line);
+      state.distanceTool.line = L.polyline(pts.map(p => [p[1], p[0]]), { color:'#1976D2', weight:2, dashArray:'5,5' }).addTo(state.map);
+    }
+    if (state.distanceTool.points.length < 10) state.map.once('click', onMapClickDistance);
+    else { state.distanceTool.active = false; UI.toast('Ferramenta de distancia concluida', 'success'); }
+  }
+
+  function onMapClickArea(e) {
+    const { lat, lng } = e.latlng;
+    state.areaTool.points.push([lng, lat]);
+    const marker = L.marker([lat, lng], { icon: L.divIcon({ className:'area-marker', html:'<div style="background:#388E3C;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3)"></div>', iconSize:[12,12], iconAnchor:[6,6] }) }).addTo(state.map);
+    state.areaTool.markers.push(marker);
+    if (state.areaTool.points.length >= 3) {
+      if (state.areaTool.polygon) state.map.removeLayer(state.areaTool.polygon);
+      state.areaTool.polygon = L.polygon(state.areaTool.points.map(p => [p[1], p[0]]), { color:'#388E3C', weight:2, fillColor:'#388E3C', fillOpacity:0.2 }).addTo(state.map);
+      const area = GeoCalc.polygonAreaHaversine(state.areaTool.points);
+      marker.bindPopup('<b>Area:</b> ' + GeoCalc.formatArea(area)).openPopup();
+    }
+  }
+
+  function init() {
+    const savedSettings = Storage.load('settings', null);
+    if (savedSettings) state.settings = { ...state.settings, ...savedSettings };
+    initMap(); loadProjects(); renderAllFeatures(); updateDataBadge(); bindEvents(); startGPS();
+    setTimeout(() => document.getElementById('splash').classList.add('hidden'), 2000);
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById('status-time').textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+      if (navigator.getBattery) navigator.getBattery().then(b => {
+        const icon = b.level > 0.75 ? 'fa-battery-full' : b.level > 0.5 ? 'fa-battery-three-quarters' : b.level > 0.25 ? 'fa-battery-half' : 'fa-battery-quarter';
+        document.getElementById('status-battery').innerHTML = '<i class="fas ' + icon + '"></i>';
+      });
+    }, 30000);
+    document.getElementById('status-time').textContent = new Date().getHours().toString().padStart(2,'0') + ':' + new Date().getMinutes().toString().padStart(2,'0');
+    UI.toast('GeoArea GNSS pronto!', 'success');
+  }
+
+  return { init, selectProject, deleteProject, deleteFeature };
+})();
+
+document.addEventListener('DOMContentLoaded', GeoArea.init);
+</script>
+</body>
+</html>
